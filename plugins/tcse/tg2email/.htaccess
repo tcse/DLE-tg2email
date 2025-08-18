@@ -1,0 +1,11 @@
+# Запрещаем прямой доступ ко всем .txt, .log, .json, .php файлам
+<FilesMatch "\.(txt|log|json)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# Разрешаем доступ ТОЛЬКО к bot.php (для вебхука Telegram)
+<Files "bot.php">
+    Order Allow,Deny
+    Allow from all
+</Files>
