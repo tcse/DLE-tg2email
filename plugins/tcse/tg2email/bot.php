@@ -3,11 +3,12 @@
 =====================================================
  Telegram to Email Bot - TCSE-cms.com & DeepSeek Chat
 -----------------------------------------------------
- Version: 0.7 (Stable)
- Release: 18.06.2025
+ Version: 0.8 (Stable)
+ Release: 18.08.2025
 -----------------------------------------------------
- https://tcse-cms.com/
+ https://tcse-cms.com/ 
  https://deepseek.com/
+ https://qwen.ai/
 -----------------------------------------------------
  Copyright (c) 2025 Vitaly V Chuyakov
  MIT License
@@ -30,7 +31,7 @@
  2. Используйте /send для немедленной отправки
  3. Настройте $bufferTime (0 для мгновенной отправки)
 =====================================================
- Planned for v0.8:
+ Planned for v0.9:
  ✎ Режим составления писем (/newmail)
  ✎ Указание получателя (/to)
  ✎ Кастомные темы писем (/subject)
@@ -51,6 +52,39 @@ $bufferTime = (int)$tg2emailConfig['tg2email_bufferTime'];
 file_put_contents('bot_log.txt', date('[Y-m-d H:i:s]')." Input: ".file_get_contents('php://input')."\n", FILE_APPEND);
 $update = json_decode(file_get_contents('php://input'), true);
 
+// === 🔐 Проверка авторизации пользователя ===
+if (isset($update['message'])) {
+    $message = $update['message'];
+    $chatId = $message['chat']['id'];
+    $userId = $message['from']['id'] ?? null;
+
+    if (!$userId) {
+        exit;
+    }
+
+    // Если Chat ID = 0 — разрешено всем
+    if ($adminChatId === '0') {
+        // разрешено
+    } else {
+        $allowedIds = array_map('trim', explode(',', $adminChatId));
+        $allowedIds = array_filter($allowedIds, 'is_numeric');
+
+        if (!in_array($userId, $allowedIds)) {
+            // ❌ Отправляем отказ
+            $blockedMessage = "❌ Вам запрещена пересылка сообщений через этого бота.\n\n";
+            $blockedMessage .= "Для связи с администратором напишите: @your_support_username"; // ← замените на нужный ник
+
+            sendTelegramMessage($chatId, $blockedMessage);
+            logMessage("Доступ запрещён: пользователь $userId");
+            exit;
+        }
+    }
+} else {
+    exit;
+}
+// === ✅ Конец проверки авторизации ===
+
+// Обработка входящего сообщения
 if (isset($update['message'])) {
     $message = $update['message'];
     $chatId = $message['chat']['id'];
@@ -223,7 +257,6 @@ function sendBufferedMessages($messages, $chatId) {
 
     $fromEmail = "telegram-bot@{$siteHost}";
     $headers = "From: {$fromEmail}\r\n";
-
     $headers .= "Content-Type: text/plain; charset=utf-8\r\n";
 
     if (mail($adminEmail, $emailSubject, $emailBody, $headers)) {
@@ -265,7 +298,7 @@ function sendTelegramMessage($chatId, $text) {
     ];
 
     $context = stream_context_create($options);
-    file_get_contents($url, false, $context);
+    @file_get_contents($url, false, $context);
 }
 
 // Очистка старых буферов
@@ -274,4 +307,9 @@ foreach ($files as $file) {
     if (time() - filemtime($file) > 3600) { // 1 час
         unlink($file);
     }
+}
+
+// Вспомогательная функция для логирования (опционально)
+function logMessage($msg) {
+    file_put_contents('auth_log.txt', date('[Y-m-d H:i:s] ') . $msg . "\n", FILE_APPEND);
 }
