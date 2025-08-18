@@ -211,7 +211,19 @@ function sendBufferedMessages($messages, $chatId) {
         $emailBody .= "\n";
     }
 
-    $headers = "From: telegram-bot@tcse-cms.com\r\n";
+    // Генерация From: на основе домена сайта
+    $siteHost = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $siteHost = strtolower(trim($siteHost));
+    $siteHost = preg_replace('/^www\./i', '', $siteHost); // убираем www
+
+    // Защита от некорректных доменов
+    if (!filter_var("user@{$siteHost}", FILTER_VALIDATE_EMAIL)) {
+        $siteHost = 'localhost'; // fallback
+    }
+
+    $fromEmail = "telegram-bot@{$siteHost}";
+    $headers = "From: {$fromEmail}\r\n";
+
     $headers .= "Content-Type: text/plain; charset=utf-8\r\n";
 
     if (mail($adminEmail, $emailSubject, $emailBody, $headers)) {
