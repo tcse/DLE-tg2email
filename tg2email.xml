@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<dleplugin>
+	<name>tg2email</name>
+	<description>Плагин tg2email</description>
+	<icon>engine/skins/images/tg2email.png</icon>
+	<version>0.0.2</version>
+	<dleversion>13</dleversion>
+	<versioncompare>greater</versioncompare>
+	<upgradeurl></upgradeurl>
+	<filedelete>0</filedelete>
+	<needplugin></needplugin>
+	<mnotice>1</mnotice>
+	<mysqlinstall><![CDATA[
+INSERT INTO `{prefix}_admin_sections` (`name`, `title`, `descr`, `icon`, `allow_groups`) 
+VALUES ('tg2email', 'Плагин tg2email', 'Пересылка сообщений Telegram на email', 'tg2email.png', '1');
+]]></mysqlinstall>
+	<mysqlupgrade><![CDATA[]]></mysqlupgrade>
+	<mysqlenable><![CDATA[]]></mysqlenable>
+	<mysqldisable><![CDATA[]]></mysqldisable>
+	<mysqldelete><![CDATA[DELETE FROM `{prefix}_admin_sections` WHERE name='tg2email']]></mysqldelete>
+	<phpinstall><![CDATA[]]></phpinstall>
+	<phpupgrade><![CDATA[]]></phpupgrade>
+	<phpenable><![CDATA[]]></phpenable>
+	<phpdisable><![CDATA[]]></phpdisable>
+	<phpdelete><![CDATA[]]></phpdelete>
+	<notice><![CDATA[Purpose: Пересылка сообщений Telegram на email с 
+          поддержкой буферизации и обработки медиа
+-----------------------------------------------------
+ Features:
+ ✔ Буферизация сообщений (1+ сообщений в одном письме)
+ ✔ Поддержка чатов/каналов/личных сообщений
+ ✔ Ссылки на оригиналы сообщений
+ ✔ Обработка медиавложений (фото, документы и др.)
+ ✔ Команда /send для мгновенной отправки
+ ✔ Логирование всех операций
+-----------------------------------------------------
+ Usage:
+ 1. Просто перешлите сообщение боту
+ 2. Используйте /send для немедленной отправки
+ 3. Настройте $bufferTime (0 для мгновенной отправки)]]></notice>
+	<file name="engine/init.php">
+		<operation action="after">
+			<searchcode><![CDATA[} elseif(isset($_GET['mod']) AND $_GET['mod'] == "rss") {
+	include_once (DLEPlugins::Check(ENGINE_DIR . '/rss.php'));
+	die();
+}]]></searchcode>
+			<replacecode><![CDATA[elseif($_GET['mod'] == "tg2email") {
+    include_once (DLEPlugins::Check(ENGINE_DIR . '/modules/tg2email.php'));
+    die();
+  }]]></replacecode>
+			<enabled>1</enabled>
+		</operation>
+	</file>
+	<file name="engine/engine.php">
+		<operation action="before">
+			<searchcode><![CDATA[switch ( $do ) {]]></searchcode>
+			<replacecode><![CDATA[include_once ENGINE_DIR . '/modules/tg2email.php';]]></replacecode>
+			<enabled>1</enabled>
+		</operation>
+	</file>
+</dleplugin>
