@@ -3,12 +3,12 @@
 =====================================================
  Telegram to Email Bot - TCSE-cms.com & DeepSeek Chat
 -----------------------------------------------------
- Version: 0.8 (Stable)
+ Version: 0.8.1 (Stable)
  Release: 18.08.2025
 -----------------------------------------------------
  https://tcse-cms.com/ 
  https://deepseek.com/
- https://qwen.ai/
+ https://chat.qwen.ai
 -----------------------------------------------------
  Copyright (c) 2025 Vitaly V Chuyakov
  MIT License
@@ -31,7 +31,7 @@
  2. Используйте /send для немедленной отправки
  3. Настройте $bufferTime (0 для мгновенной отправки)
 =====================================================
- Planned for v0.9:
+ Planned for v0.8:
  ✎ Режим составления писем (/newmail)
  ✎ Указание получателя (/to)
  ✎ Кастомные темы писем (/subject)
@@ -72,7 +72,7 @@ if (isset($update['message'])) {
         if (!in_array($userId, $allowedIds)) {
             // ❌ Отправляем отказ
             $blockedMessage = "❌ Вам запрещена пересылка сообщений через этого бота.\n\n";
-            $blockedMessage .= "Для связи с администратором напишите: @your_support_username"; // ← замените на нужный ник
+            $blockedMessage .= "Для связи с администратором напишите: @TCSEcmscom"; // ← замените на нужный ник
 
             sendTelegramMessage($chatId, $blockedMessage);
             logMessage("Доступ запрещён: пользователь $userId");
@@ -173,34 +173,28 @@ function prepareMessage($message) {
 
     // Определяем отправителя и тип сообщения
     if (isset($message['forward_from'])) {
-        // Личное сообщение от пользователя
         $from = $message['forward_from'];
-        $data['sender'] = $from['first_name'].(isset($from['last_name']) ? ' '.$from['last_name'] : '');
+        $firstName = $from['first_name'] ?? 'Пользователь';
+        $lastName = isset($from['last_name']) ? ' '.$from['last_name'] : '';
+        $username = isset($from['username']) ? "@{$from['username']}" : null;
+        $userId = $from['id'];
+
+        $sender = trim($firstName . $lastName);
+
+        // Формируем детали: только те, что есть
+        $details = [];
+        if ($username) {
+            $details[] = $username;
+        }
+        $details[] = "ID: {$userId}";
+
+        // Соединяем с пробелами и оборачиваем в одни скобки
+        $data['sender'] = $sender . ' (' . implode(' | ', $details) . ')';
         $data['message_type'] = 'private';
-        
-        // Для документов добавляем имя файла
+        $data['user_id'] = $userId;
+
         if ($data['media_type'] == 'document' && isset($message['document']['file_name'])) {
-            $data['text'] = "Файл: ".$message['document']['file_name']."\n\n".$data['text'];
-        }
-    } 
-    elseif (isset($message['forward_sender_name'])) {
-        // Анонимная пересылка
-        $data['sender'] = $message['forward_sender_name'];
-        $data['message_type'] = 'anonymous';
-    }
-    elseif (isset($message['forward_from_chat'])) {
-        // Из чата/канала
-        $chat = $message['forward_from_chat'];
-        $data['sender'] = $chat['title'] ?? 'Без названия';
-        if (isset($chat['username'])) {
-            $data['sender'] .= " (@".$chat['username'].")";
-        }
-        $data['message_type'] = $chat['type']; // channel, group, supergroup
-        
-        // Ссылка на сообщение (только для публичных чатов/каналов)
-        if (isset($message['forward_from_message_id'])) {
-            $username = isset($chat['username']) ? $chat['username'] : 'c/'.$chat['id'];
-            $data['link'] = "https://t.me/$username/".$message['forward_from_message_id'];
+            $data['text'] = "Файл: " . $message['document']['file_name'] . "\n\n" . $data['text'];
         }
     }
 
