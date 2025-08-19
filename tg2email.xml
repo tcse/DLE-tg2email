@@ -3,7 +3,7 @@
 	<name>tg2email</name>
 	<description>Плагин tg2email</description>
 	<icon>engine/skins/images/tg2email.png</icon>
-	<version>0.0.2</version>
+	<version>0.4.1</version>
 	<dleversion>13</dleversion>
 	<versioncompare>greater</versioncompare>
 	<upgradeurl></upgradeurl>
