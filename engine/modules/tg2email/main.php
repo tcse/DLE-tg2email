@@ -56,12 +56,6 @@ include_once (DLEPlugins::Check(ENGINE_DIR . '/data/tg2email.php'));
                 </div>
                 <div class="col-xs-12 col-md-5">
                     <input dir="auto" type="text" class="form-control" name="formatEmail" value="<?php echo $tg2emailConfig['tg2email_formatEmail']; ?>">
-
-                    <!-- <select name="tg2email_formatemail">
-                        <option value="0" ".($tg2emailConfig['tg2email_formatemail'] == '0' ? 'selected' : '').">Текстовое письмо</option>
-                        <option value="1" ".($tg2emailConfig['tg2email_formatemail'] == '1' ? 'selected' : '').">HTML-письмо</option>
-                    </select> -->
-
                 </div>
 
                 <div class="col-xs-12 col-md-7">
