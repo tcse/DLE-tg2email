@@ -13,9 +13,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $bufferTime = intval($_POST['bufferTime']);
     $formatEmail = intval($_POST['formatEmail']);
 
-    // Проверка безопасности email
-    if (!filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) {
-        die("Некорректный email");
+    // Проверка нескольких email-адресов
+    $emails = array_map('trim', explode(',', $adminEmail));
+    foreach ($emails as $email) {
+        if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            die("Некорректный email: $email");
+        }
     }
 
     // Содержимое нового файла конфига
