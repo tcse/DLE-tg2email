@@ -3,7 +3,7 @@
 =====================================================
  Telegram to Email Bot - TCSE-cms.com & DeepSeek Chat
 -----------------------------------------------------
- Version: 0.8.3 (Stable)
+ Version: 0.8.4 (Stable)
  Release: 19.08.2025
 -----------------------------------------------------
  https://tcse-cms.com/   
@@ -140,14 +140,14 @@ if (isset($update['message'])) {
 function prepareMessage($message) {
     $data = [
         'text' => '',
-        'date' => date('d.m.Y H:i', $message['date']),
+        // Используем оригинальную дату, если есть
+        'date' => date('d.m.Y H:i', $message['forward_date'] ?? $message['date']),
         'has_media' => false,
         'media_type' => null,
         'message_type' => 'private',
         'sender' => 'Пользователь',
-        'link' => null,         // https://t.me/...
-        'tg_link' => null,      // tg://openmessage или tg://user
-        'file_direct_link' => null, // https://api.telegram.org/file/...
+        'link' => null,
+        'file_direct_link' => null,
         'user_id' => null,
     ];
 
