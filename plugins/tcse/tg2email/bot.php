@@ -31,7 +31,7 @@
  2. Используйте /send для немедленной отправки
  3. Настройте $bufferTime (0 для мгновенной отправки)
 =====================================================
- Planned for v0.8:
+ Planned for v0.9:
  ✎ Режим составления писем (/newmail)
  ✎ Указание получателя (/to)
  ✎ Кастомные темы писем (/subject)
@@ -47,6 +47,7 @@ $botToken = $tg2emailConfig['tg2email_TOKEN'];
 $adminEmail = $tg2emailConfig['tg2email_adminEmail'];
 $adminChatId = $tg2emailConfig['tg2email_CHATID'];
 $bufferTime = (int)$tg2emailConfig['tg2email_bufferTime'];
+$emailFormat = $tg2emailConfig['tg2email_formatEmail'] ?? '0'; // 0 = text, 1 = html
 
 // Логирование
 file_put_contents('bot_log.txt', date('[Y-m-d H:i:s]')." Input: ".file_get_contents('php://input')."\n", FILE_APPEND);
@@ -203,56 +204,101 @@ function prepareMessage($message) {
 
 // В функции sendBufferedMessages() обновляем формирование тела письма:
 function sendBufferedMessages($messages, $chatId) {
-    global $adminEmail;
+    global $adminEmail, $emailFormat;
 
     $emailSubject = "Сообщения из Telegram (".count($messages).")";
-    $emailBody = "Собрано сообщений: ".count($messages)."\n\n";
+    $headers = "From: ".getFromEmail()."\r\n";
 
-    foreach ($messages as $index => $msg) {
-        $emailBody .= "=== Сообщение ".($index+1)." ===\n";
-        $emailBody .= "От: ".$msg['sender']."\n";
-        $emailBody .= "Дата: ".$msg['date']."\n";
-        $emailBody .= "Тип: ".getMessageTypeDescription($msg['message_type'])."\n";
-        
-        if ($msg['has_media']) {
-            $mediaTypes = [
-                'photo' => 'Фото',
-                'video' => 'Видео',
-                'document' => 'Документ',
-                'audio' => 'Аудио',
-                'voice' => 'Голосовое сообщение',
-                'sticker' => 'Стикер'
-            ];
-            $emailBody .= "Медиа: ".$mediaTypes[$msg['media_type']]."\n";
+    if ($emailFormat == '1') {
+        // === HTML ПИСЬМО ===
+        $headers .= "Content-Type: text/html; charset=utf-8\r\n";
+
+        $emailBody = "
+        <div style='font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; color: #333; line-height: 1.6;'>
+            <h2 style='color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px;'>Собрано сообщений: ".count($messages)."</h2>";
+
+        foreach ($messages as $index => $msg) {
+            $typeLabel = getMessageTypeLabel($msg['message_type']);
+            $mediaLabel = $msg['has_media'] ? getMediaLabel($msg['media_type']) : '';
+
+            $emailBody .= "
+            <div style='background: #f9f9f9; border-left: 4px solid #3498db; padding: 15px; margin: 15px 0; border-radius: 0 8px 8px 0;'>
+                <strong style='color: #2c3e50;'>Сообщение ".($index+1)."</strong>
+                <p style='margin: 8px 0;'><strong>От:</strong> ".htmlspecialchars($msg['sender'])."</p>
+                <p style='margin: 8px 0;'><strong>Дата:</strong> ".$msg['date']."</p>
+                <p style='margin: 8px 0;'><strong>Тип:</strong> $typeLabel</p>
+                $mediaLabel
+            ";
+
+            if (!empty($msg['link'])) {
+                $emailBody .= "<p style='margin: 8px 0;'><strong>Ссылка:</strong> <a href='".$msg['link']."' target='_blank'>Перейти к сообщению</a></p>";
+            } elseif ($msg['message_type'] != 'private') {
+                $emailBody .= "<p style='margin: 8px 0; color: #7f8c8d;'><em>Ссылка: недоступна (приватный чат)</em></p>";
+            }
+
+            if (!empty($msg['file_link'])) {
+                $emailBody .= "<p style='margin: 8px 0;'><strong>Вложение:</strong> <a href='".$msg['file_link']."' target='_blank'>Скачать файл</a></p>";
+            }
+
+            if (!empty($msg['text'])) {
+                $emailBody .= "<pre style='background:#fff; padding:10px; border:1px solid #ddd; border-radius:4px; overflow:auto; white-space: pre-wrap; font-size: 14px;'>".
+                    htmlspecialchars(trim($msg['text'])).
+                    "</pre>";
+            }
+
+            $emailBody .= "</div>";
         }
-        
-        if (!empty($msg['link'])) {
-            $emailBody .= "Ссылка: ".$msg['link']."\n";
-        } elseif ($msg['message_type'] != 'private') {
-            $emailBody .= "Ссылка: недоступна (приватный чат)\n";
+
+        $emailBody .= "
+            <p style='color: #7f8c8d; font-size: 12px; margin-top: 30px; border-top: 1px solid #eee; padding-top: 10px;'>
+                Это письмо сгенерировано автоматически через <strong>tg2email</strong> — плагин для DLE.
+            </p>
+        </div>";
+    } else {
+        // === ОБЫЧНЫЙ ТЕКСТ ===
+        $headers .= "Content-Type: text/plain; charset=utf-8\r\n";
+
+        $emailBody = "Собрано сообщений: ".count($messages)."\n\n";
+
+        foreach ($messages as $index => $msg) {
+            $emailBody .= "=== Сообщение ".($index+1)." ===\n";
+            $emailBody .= "От: ".$msg['sender']."\n";
+            $emailBody .= "Дата: ".$msg['date']."\n";
+            $emailBody .= "Тип: ".getMessageTypeDescription($msg['message_type'])."\n";
+            
+            if ($msg['has_media']) {
+                $mediaTypes = [
+                    'photo' => 'Фото',
+                    'video' => 'Видео',
+                    'document' => 'Документ',
+                    'audio' => 'Аудио',
+                    'voice' => 'Голосовое сообщение',
+                    'sticker' => 'Стикер'
+                ];
+                $emailBody .= "Медиа: ".$mediaTypes[$msg['media_type']]."\n";
+            }
+            
+            if (!empty($msg['link'])) {
+                $emailBody .= "Ссылка: ".$msg['link']."\n";
+            } elseif ($msg['message_type'] != 'private') {
+                $emailBody .= "Ссылка: недоступна (приватный чат)\n";
+            }
+            
+            if (!empty($msg['file_link'])) {
+                $emailBody .= "Файл: ".$msg['file_link']."\n";
+            }
+            
+            if (!empty($msg['text'])) {
+                $emailBody .= "\n".trim($msg['text'])."\n";
+            }
+            
+            $emailBody .= "\n";
         }
-        
-        if (!empty($msg['text'])) {
-            $emailBody .= "\n".trim($msg['text'])."\n";
-        }
-        
-        $emailBody .= "\n";
+
+        $emailBody .= "\n\nЭто письмо сгенерировано автоматически через tg2email — плагин для DLE.";
     }
 
-    // Генерация From: на основе домена сайта
-    $siteHost = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    $siteHost = strtolower(trim($siteHost));
-    $siteHost = preg_replace('/^www\./i', '', $siteHost); // убираем www
-
-    // Защита от некорректных доменов
-    if (!filter_var("user@{$siteHost}", FILTER_VALIDATE_EMAIL)) {
-        $siteHost = 'localhost'; // fallback
-    }
-
-    $fromEmail = "telegram-bot@{$siteHost}";
-    $headers = "From: {$fromEmail}\r\n";
-    $headers .= "Content-Type: text/plain; charset=utf-8\r\n";
-
+    // Отправляем
     if (mail($adminEmail, $emailSubject, $emailBody, $headers)) {
         sendTelegramMessage($chatId, "📬 Отправлено ".count($messages)." сообщений!");
     } else {
@@ -306,4 +352,52 @@ foreach ($files as $file) {
 // Вспомогательная функция для логирования (опционально)
 function logMessage($msg) {
     file_put_contents('auth_log.txt', date('[Y-m-d H:i:s] ') . $msg . "\n", FILE_APPEND);
+}
+
+// Цветовые метки для типов сообщений
+function getMessageTypeLabel($type) {
+    $labels = [
+        'private'   => '<span style="color: #27ae60; font-weight: bold;">Личное сообщение</span>',
+        'anonymous' => '<span style="color: #e67e22; font-weight: bold;">Анонимная пересылка</span>',
+        'channel'   => '<span style="color: #3498db; font-weight: bold;">Канал</span>',
+        'group'     => '<span style="color: #8e44ad; font-weight: bold;">Группа</span>',
+        'supergroup'=> '<span style="color: #8e44ad; font-weight: bold;">Супергруппа</span>'
+    ];
+    return $labels[$type] ?? $type;
+}
+
+// Цветовые метки для медиа
+function getMediaLabel($type) {
+    $icons = [
+        'photo'     => '📷',
+        'video'     => '🎥',
+        'document'  => '📄',
+        'audio'     => '🎵',
+        'voice'     => '🎙',
+        'sticker'   => '🖼'
+    ];
+    $colors = [
+        'photo'     => '#e74c3c',
+        'video'     => '#8e44ad',
+        'document'  => '#3498db',
+        'audio'     => '#16a085',
+        'voice'     => '#f39c12',
+        'sticker'   => '#95a5a6'
+    ];
+    $name = ucfirst($type);
+    $icon = $icons[$type] ?? '📎';
+    $color = $colors[$type] ?? '#333';
+
+    return "<p style='margin: 8px 0;'><strong>Медиа:</strong> <span style='color: $color; font-weight: bold;'>$icon $name</span></p>";
+}
+
+// Генерация From: (перенесено в отдельную функцию)
+function getFromEmail() {
+    $siteHost = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $siteHost = strtolower(trim($siteHost));
+    $siteHost = preg_replace('/^www\./i', '', $siteHost);
+    if (!filter_var("user@{$siteHost}", FILTER_VALIDATE_EMAIL)) {
+        $siteHost = 'localhost';
+    }
+    return "telegram-bot@{$siteHost}";
 }
