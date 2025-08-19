@@ -8,4 +8,5 @@ $tg2emailConfig = [
     'tg2email_CHATID' => '757940529',
     'tg2email_bufferTime' => 2,
     'tg2email_adminEmail' => 'mail@tcse-cms.com',
+    'tg2email_formatEmail'  => '0', // 0 = plain text, 1 = HTML
 ];
