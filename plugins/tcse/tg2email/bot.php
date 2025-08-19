@@ -3,7 +3,7 @@
 =====================================================
  Telegram to Email Bot - TCSE-cms.com & DeepSeek Chat
 -----------------------------------------------------
- Version: 0.8.2 (Stable)
+ Version: 0.8.3 (Stable)
  Release: 19.08.2025
 -----------------------------------------------------
  https://tcse-cms.com/   
@@ -16,12 +16,13 @@
  File: /plugins/tcse/tg2email/bot.php
 -----------------------------------------------------
  Purpose: Пересылка сообщений Telegram на email с 
-          поддержкой буферизации, медиа и tg:// ссылок
+          поддержкой буферизации, медиа и ссылок tg://
 -----------------------------------------------------
  Features:
  ✔ Буферизация (1+ сообщений в одном письме)
  ✔ Поддержка чатов, каналов, ЛС
  ✔ Ссылки на оригиналы (https://t.me и tg://)
+ ✔ Прямые ссылки на медиа (api.telegram.org/file)
  ✔ Обработка медиа: фото, документы и др.
  ✔ Команда /send для мгновенной отправки
  ✔ Полная идентификация: @username | ID
@@ -144,8 +145,9 @@ function prepareMessage($message) {
         'media_type' => null,
         'message_type' => 'private',
         'sender' => 'Пользователь',
-        'link' => null,
-        'tg_link' => null,
+        'link' => null,         // https://t.me/...
+        'tg_link' => null,      // tg://openmessage или tg://user
+        'file_direct_link' => null, // https://api.telegram.org/file/...
         'user_id' => null,
     ];
 
@@ -182,9 +184,32 @@ function prepareMessage($message) {
         $data['message_type'] = 'private';
         $data['user_id'] = $userId;
 
-        // Ссылка tg:// для ЛС
+        // 1. Ссылка на пользователя (всегда работает)
+        $data['tg_link'] = "tg://user?id={$userId}";
+
+        // 2. Если есть forward_from_message_id — улучшаем до ссылки на сообщение
         if (isset($message['forward_from_message_id'])) {
             $data['tg_link'] = "tg://openmessage?user_id={$userId}&message_id=" . $message['forward_from_message_id'];
+        }
+
+        // 3. Генерируем прямую ссылку на файл, если есть медиа
+        if ($data['has_media']) {
+            $fileId = null;
+            if ($data['media_type'] == 'photo') {
+                $photos = $message['photo'];
+                $fileId = $photos[count($photos)-1]['file_id']; // лучшее качество
+            } elseif (isset($message[$data['media_type']]['file_id'])) {
+                $fileId = $message[$data['media_type']]['file_id'];
+            }
+
+            if ($fileId) {
+                $getFileUrl = "https://api.telegram.org/bot{$GLOBALS['botToken']}/getFile?file_id={$fileId}";
+                $fileInfo = @json_decode(file_get_contents($getFileUrl), true);
+                if (isset($fileInfo['result']['file_path'])) {
+                    $filePath = $fileInfo['result']['file_path'];
+                    $data['file_direct_link'] = "https://api.telegram.org/file/bot{$GLOBALS['botToken']}/{$filePath}";
+                }
+            }
         }
 
     } elseif (isset($message['forward_sender_name'])) {
@@ -251,8 +276,12 @@ function sendBufferedMessages($messages, $chatId) {
                 $emailBody .= "<p style='margin: 8px 0;'><strong>Ссылка:</strong> <a href='".$msg['link']."' target='_blank'>Открыть в Telegram</a></p>";
             }
 
-            if (!empty($msg['tg_link'])) {
-                $emailBody .= "<p style='margin: 8px 0;'><strong>В приложении:</strong> <a href='".$msg['tg_link']."' target='_tg'>tg:// Открыть сообщение</a></p>";
+            // if (!empty($msg['tg_link'])) {
+            //     $emailBody .= "<p style='margin: 8px 0;'><strong>В приложении:</strong> <a href='".$msg['tg_link']."' target='_tg'>tg:// Открыть</a></p>";
+            // }
+
+            if (!empty($msg['file_direct_link'])) {
+                $emailBody .= "<p style='margin: 8px 0;'><strong>Файл:</strong> <a href='".$msg['file_direct_link']."' target='_blank'>Скачать (временная ссылка)</a></p>";
             }
 
             if (!empty($msg['text'])) {
@@ -293,6 +322,10 @@ function sendBufferedMessages($messages, $chatId) {
             
             if (!empty($msg['tg_link'])) {
                 $emailBody .= "tg://: ".$msg['tg_link']."\n";
+            }
+            
+            if (!empty($msg['file_direct_link'])) {
+                $emailBody .= "Файл: ".$msg['file_direct_link']."\n";
             }
             
             if (!empty($msg['text'])) {
