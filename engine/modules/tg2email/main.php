@@ -44,10 +44,13 @@ include_once (DLEPlugins::Check(ENGINE_DIR . '/data/tg2email.php'));
 
                 <div class="col-xs-12 col-md-7">
                     <h5>Admin Email</h5>
-                    <div class="text-muted text-size-small hidden-xs">Адрес получателя email</div>
+                    <div class="text-muted text-size-small hidden-xs">
+                        Адрес получателя email<br>
+                        <strong>Можно указать несколько через запятую:</strong> user1@site.com, user2@site.com
+                    </div>
                 </div>
                 <div class="col-xs-12 col-md-5">
-                    <input dir="auto" type="text" class="form-control" name="adminEmail" value="<?php echo $tg2emailConfig['tg2email_adminEmail']; ?>">
+                    <input dir="auto" type="text" class="form-control" name="adminEmail" value="<?php echo htmlspecialchars($tg2emailConfig['tg2email_adminEmail']); ?>">
                 </div>
 
                 <div class="col-xs-12 col-md-7">
@@ -56,6 +59,9 @@ include_once (DLEPlugins::Check(ENGINE_DIR . '/data/tg2email.php'));
                 </div>
                 <div class="col-xs-12 col-md-5">
                     <input dir="auto" type="text" class="form-control" name="formatEmail" value="<?php echo $tg2emailConfig['tg2email_formatEmail']; ?>">
+
+                    
+
                 </div>
 
                 <div class="col-xs-12 col-md-7">
