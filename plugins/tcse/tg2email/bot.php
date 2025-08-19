@@ -338,8 +338,24 @@ function sendBufferedMessages($messages, $chatId) {
         $emailBody .= "\n\nЭто письмо сгенерировано автоматически через tg2email — плагин для DLE.";
     }
 
-    if (mail($adminEmail, $emailSubject, $emailBody, $headers)) {
-        sendTelegramMessage($chatId, "📬 Отправлено ".count($messages)." сообщений!");
+    // Поддержка нескольких email: через запятую
+    $recipients = array_map('trim', explode(',', $adminEmail));
+    $successCount = 0;
+
+    foreach ($recipients as $recipient) {
+        if (filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
+            if (mail($recipient, $emailSubject, $emailBody, $headers)) {
+                $successCount++;
+            }
+        }
+    }
+
+    if ($successCount > 0) {
+        $msg = "📬 Отправлено ".count($messages)." сообщений!";
+        if ($successCount < count($recipients)) {
+            $msg .= " (не все адреса доставлены)";
+        }
+        sendTelegramMessage($chatId, $msg);
     } else {
         sendTelegramMessage($chatId, "❌ Ошибка отправки email");
     }
