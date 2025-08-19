@@ -11,6 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $adminChatId = trim($_POST['adminChatId']);
     $adminEmail = trim($_POST['adminEmail']);
     $bufferTime = intval($_POST['bufferTime']);
+    $formatEmail = intval($_POST['formatEmail']);
 
     // Проверка безопасности email
     if (!filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) {
@@ -28,6 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $configContent .= "    'tg2email_CHATID' => '" . addslashes($adminChatId) . "',\n";
     $configContent .= "    'tg2email_bufferTime' => " . $bufferTime . ",\n";
     $configContent .= "    'tg2email_adminEmail' => '" . addslashes($adminEmail) . "',\n";
+    $configContent .= "    'tg2email_formatEmail' => '" . addslashes($formatEmail) . "',\n";
     $configContent .= "];\n";
 
     // Путь к файлу конфига
