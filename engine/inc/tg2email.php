@@ -12,6 +12,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $adminEmail = trim($_POST['adminEmail']);
     $bufferTime = intval($_POST['bufferTime']);
     $formatEmail = intval($_POST['formatEmail']);
+    $mediaTtl = intval($_POST['mediaTtl']);
+    $embedPhotos = intval($_POST['embedPhotos']); // ← НОВАЯ ПЕРЕМЕННАЯ
 
     // Проверка нескольких email-адресов
     $emails = array_map('trim', explode(',', $adminEmail));
@@ -33,6 +35,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $configContent .= "    'tg2email_bufferTime' => " . $bufferTime . ",\n";
     $configContent .= "    'tg2email_adminEmail' => '" . addslashes($adminEmail) . "',\n";
     $configContent .= "    'tg2email_formatEmail' => '" . addslashes($formatEmail) . "',\n";
+    $configContent .= "    'tg2email_media_ttl' => '" . addslashes($mediaTtl) . "',\n";
+    $configContent .= "    'tg2email_embedPhotos' => '" . addslashes($embedPhotos) . "',\n"; // ← ДОБАВЛЕНО
     $configContent .= "];\n";
 
     // Путь к файлу конфига
