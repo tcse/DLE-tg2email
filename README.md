@@ -120,7 +120,8 @@ MIT License — свободное использование, модифика�
 
 - **Сайт**: [https://tcse-cms.com](https://tcse-cms.com)
 - **Telegram**: [@TCSEcmscom](https://t.me/TCSEcmscom)
-- **Статья**: [TG2Email: Фиксируйте важные переговоры из Telegram в почте](https://smartzone.ru/plugins/tcse/tg2email/file.php?id=eyJmaWxlX3BhdGgiOiJwaG90b3NcL2ZpbGVfMTEuanBnIiwidGltZXN0YW1wIjoxNzU1NjMxOTY3fQ%3D%3D)
+- **Статья**: [TG2Email: Фиксируйте важные переговоры из Telegram в почте](https://smartzone.ru/soft/35599-tg2email.html)
+- **Статья**: [TG2Email: Почему email всё ещё важнее мессенджеров: как сохранить порядок в деловом общении в 2025 году](https://blogs.smartzone.ru/224909-pochemu-email-vse-esche-vazhnee-messendzherov-kak-sohranit-porjadok-v-delovom-obschenii-v-2025-godu.html)
 
 ---
 
