@@ -59,10 +59,32 @@ include_once (DLEPlugins::Check(ENGINE_DIR . '/data/tg2email.php'));
                 </div>
                 <div class="col-xs-12 col-md-5">
                     <input dir="auto" type="text" class="form-control" name="formatEmail" value="<?php echo $tg2emailConfig['tg2email_formatEmail']; ?>">
-
-                    
-
                 </div>
+
+                <div class="col-xs-12 col-md-7">
+                    <h5>Срок хранения ссылок</h5>
+                    <div class="text-muted text-size-small hidden-xs">
+                        Сколько дней хранить ссылки на файлы в media_db.json<br>
+                        0 — вечно, 1 — 1 день, 365 — 1 год
+                    </div>
+                </div>
+                <div class="col-xs-12 col-md-5">
+                    <input dir="auto" type="number" class="form-control" name="mediaTtl" value="<?php echo $tg2emailConfig['tg2email_media_ttl']; ?>">
+                </div>
+
+                <div class="col-xs-12 col-md-7">
+                    <h5>Вложения для фото</h5>
+                    <div class="text-muted text-size-small hidden-xs">
+                        <p><strong>💡 Совет:</strong> Включите вложения — так важные фото не потеряются, даже если Telegram изменит ссылки.</p>
+                    </div>
+                </div>
+                <div class="col-xs-12 col-md-5">
+                    <select name="embedPhotos" class="form-control">
+                        <option value="0" <?php echo ($tg2emailConfig['tg2email_embedPhotos'] ?? '0') == '0' ? 'selected' : ''; ?>>❌ Нет, только ссылки</option>
+                        <option value="1" <?php echo ($tg2emailConfig['tg2email_embedPhotos'] ?? '0') == '1' ? 'selected' : ''; ?>>✅ Да, как вложения</option>
+                    </select>
+                </div>
+
 
                 <div class="col-xs-12 col-md-7">
                     <h5>Buffer Time</h5>
