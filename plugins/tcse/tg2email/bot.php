@@ -3,8 +3,8 @@
 =====================================================
  Telegram to Email Bot - TCSE-cms.com & DeepSeek Chat
 -----------------------------------------------------
- Version: 0.8.4 (Stable)
- Release: 19.08.2025
+ Version: 0.8.5 (Stable)
+ Release: 20.08.2025
 -----------------------------------------------------
  https://tcse-cms.com/   
  https://deepseek.com/  
@@ -16,16 +16,16 @@
  File: /plugins/tcse/tg2email/bot.php
 -----------------------------------------------------
  Purpose: Пересылка сообщений Telegram на email с 
-          поддержкой буферизации, медиа и ссылок tg://
+          безопасной отдачей медиа через file.php
 -----------------------------------------------------
  Features:
  ✔ Буферизация (1+ сообщений в одном письме)
  ✔ Поддержка чатов, каналов, ЛС
- ✔ Ссылки на оригиналы (https://t.me и tg://)
- ✔ Прямые ссылки на медиа (api.telegram.org/file)
+ ✔ Безопасные ссылки на медиа (без токена!)
  ✔ Обработка медиа: фото, документы и др.
  ✔ Команда /send для мгновенной отправки
  ✔ Полная идентификация: @username | ID
+ ✔ Поддержка нескольких email
  ✔ HTML и текстовый формат письма
  ✔ Логирование и защита
 =====================================================
@@ -140,15 +140,14 @@ if (isset($update['message'])) {
 function prepareMessage($message) {
     $data = [
         'text' => '',
-        // Используем оригинальную дату, если есть
-        'date' => date('d.m.Y H:i', $message['forward_date'] ?? $message['date']),
+        'date' => date('d.m.Y H:i', $message['date']),
         'has_media' => false,
         'media_type' => null,
         'message_type' => 'private',
         'sender' => 'Пользователь',
         'link' => null,
-        'file_direct_link' => null,
         'user_id' => null,
+        'file_direct_link' => null,
     ];
 
     // Получаем текст
@@ -184,34 +183,6 @@ function prepareMessage($message) {
         $data['message_type'] = 'private';
         $data['user_id'] = $userId;
 
-        // 1. Ссылка на пользователя (всегда работает)
-        $data['tg_link'] = "tg://user?id={$userId}";
-
-        // 2. Если есть forward_from_message_id — улучшаем до ссылки на сообщение
-        if (isset($message['forward_from_message_id'])) {
-            $data['tg_link'] = "tg://openmessage?user_id={$userId}&message_id=" . $message['forward_from_message_id'];
-        }
-
-        // 3. Генерируем прямую ссылку на файл, если есть медиа
-        if ($data['has_media']) {
-            $fileId = null;
-            if ($data['media_type'] == 'photo') {
-                $photos = $message['photo'];
-                $fileId = $photos[count($photos)-1]['file_id']; // лучшее качество
-            } elseif (isset($message[$data['media_type']]['file_id'])) {
-                $fileId = $message[$data['media_type']]['file_id'];
-            }
-
-            if ($fileId) {
-                $getFileUrl = "https://api.telegram.org/bot{$GLOBALS['botToken']}/getFile?file_id={$fileId}";
-                $fileInfo = @json_decode(file_get_contents($getFileUrl), true);
-                if (isset($fileInfo['result']['file_path'])) {
-                    $filePath = $fileInfo['result']['file_path'];
-                    $data['file_direct_link'] = "https://api.telegram.org/file/bot{$GLOBALS['botToken']}/{$filePath}";
-                }
-            }
-        }
-
     } elseif (isset($message['forward_sender_name'])) {
         $data['sender'] = $message['forward_sender_name'];
         $data['message_type'] = 'anonymous';
@@ -229,9 +200,6 @@ function prepareMessage($message) {
             $username = $chat['username'] ?? null;
             if ($username) {
                 $data['link'] = "https://t.me/$username/" . $message['forward_from_message_id'];
-            } else {
-                $internalId = $chat['id'];
-                $data['tg_link'] = "tg://openmessage?chat_id=$internalId&message_id=" . $message['forward_from_message_id'];
             }
         }
     }
@@ -239,6 +207,45 @@ function prepareMessage($message) {
     // Для документов — добавляем имя файла
     if ($data['has_media'] && $data['media_type'] == 'document' && isset($message['document']['file_name'])) {
         $data['text'] = "Файл: " . $message['document']['file_name'] . "\n\n" . $data['text'];
+    }
+
+    // === СОХРАНЯЕМ ФАЙЛ В БАЗУ И ГЕНЕРИРУЕМ БЕЗОПАСНУЮ ССЫЛКУ ===
+    if ($data['has_media']) {
+        $fileId = null;
+
+        if ($data['media_type'] == 'photo') {
+            $photos = $message['photo'];
+            $fileId = $photos[count($photos)-1]['file_id']; // лучшее качество
+        } elseif (isset($message[$data['media_type']]['file_id'])) {
+            $fileId = $message[$data['media_type']]['file_id'];
+        }
+
+        if ($fileId) {
+            $getFileUrl = "https://api.telegram.org/bot{$GLOBALS['botToken']}/getFile?file_id={$fileId}";
+            $fileInfo = @json_decode(file_get_contents($getFileUrl), true);
+
+            if (isset($fileInfo['result']['file_path'])) {
+                $filePath = $fileInfo['result']['file_path'];
+                $filename = basename($filePath);
+
+                // Путь к базе
+                $dbFile = __DIR__ . '/media_db.json';
+                $db = file_exists($dbFile) ? json_decode(file_get_contents($dbFile), true) : [];
+
+                // Сохраняем
+                $db[$fileId] = [
+                    'file_path' => $filePath,
+                    'timestamp' => time(),
+                    'original_filename' => $filename
+                ];
+
+                file_put_contents($dbFile, json_encode($db, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+
+                // Генерируем безопасную ссылку
+                $siteUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'];
+                $data['file_direct_link'] = $siteUrl . "/plugins/tcse/tg2email/file.php?id=" . urlencode($fileId);
+            }
+        }
     }
 
     return $data;
@@ -276,12 +283,8 @@ function sendBufferedMessages($messages, $chatId) {
                 $emailBody .= "<p style='margin: 8px 0;'><strong>Ссылка:</strong> <a href='".$msg['link']."' target='_blank'>Открыть в Telegram</a></p>";
             }
 
-            // if (!empty($msg['tg_link'])) {
-            //     $emailBody .= "<p style='margin: 8px 0;'><strong>В приложении:</strong> <a href='".$msg['tg_link']."' target='_tg'>tg:// Открыть</a></p>";
-            // }
-
             if (!empty($msg['file_direct_link'])) {
-                $emailBody .= "<p style='margin: 8px 0;'><strong>Файл:</strong> <a href='".$msg['file_direct_link']."' target='_blank'>Скачать (временная ссылка)</a></p>";
+                $emailBody .= "<p style='margin: 8px 0;'><strong>Файл:</strong> <a href='".$msg['file_direct_link']."' target='_blank'>Скачать</a></p>";
             }
 
             if (!empty($msg['text'])) {
@@ -320,10 +323,6 @@ function sendBufferedMessages($messages, $chatId) {
                 $emailBody .= "Ссылка: ".$msg['link']."\n";
             }
             
-            if (!empty($msg['tg_link'])) {
-                $emailBody .= "tg://: ".$msg['tg_link']."\n";
-            }
-            
             if (!empty($msg['file_direct_link'])) {
                 $emailBody .= "Файл: ".$msg['file_direct_link']."\n";
             }
@@ -338,26 +337,32 @@ function sendBufferedMessages($messages, $chatId) {
         $emailBody .= "\n\nЭто письмо сгенерировано автоматически через tg2email — плагин для DLE.";
     }
 
-    // Поддержка нескольких email: через запятую
+    // === Отправка на несколько email ===
     $recipients = array_map('trim', explode(',', $adminEmail));
     $successCount = 0;
+    $failedRecipients = [];
 
     foreach ($recipients as $recipient) {
-        if (filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
-            if (mail($recipient, $emailSubject, $emailBody, $headers)) {
-                $successCount++;
-            }
+        if (empty($recipient)) continue;
+        if (!filter_var($recipient, FILTER_VALIDATE_EMAIL)) continue;
+
+        $uniqueHeaders = $headers . "Message-ID: <" . md5(uniqid(mt_rand(), true)) . "@{$_SERVER['HTTP_HOST']}>\r\n";
+
+        if (mail($recipient, $emailSubject, $emailBody, $uniqueHeaders)) {
+            $successCount++;
+        } else {
+            $failedRecipients[] = $recipient;
         }
     }
 
     if ($successCount > 0) {
         $msg = "📬 Отправлено ".count($messages)." сообщений!";
-        if ($successCount < count($recipients)) {
-            $msg .= " (не все адреса доставлены)";
+        if (!empty($failedRecipients)) {
+            $msg .= " (не доставлено: " . implode(', ', $failedRecipients) . ")";
         }
         sendTelegramMessage($chatId, $msg);
     } else {
-        sendTelegramMessage($chatId, "❌ Ошибка отправки email");
+        sendTelegramMessage($chatId, "❌ Не удалось отправить письмо ни одному получателю");
     }
 }
 
@@ -425,5 +430,21 @@ $files = glob("buffer_*.txt");
 foreach ($files as $file) {
     if (time() - filemtime($file) > 3600) {
         unlink($file);
+    }
+}
+
+// Очистка старых записей в media_db.json (старше 24 часов)
+$dbFile = __DIR__ . '/media_db.json';
+if (file_exists($dbFile)) {
+    $db = json_decode(file_get_contents($dbFile), true);
+    $cleaned = false;
+    foreach ($db as $id => $data) {
+        if (time() - ($data['timestamp'] ?? 0) > 86400) {
+            unset($db[$id]);
+            $cleaned = true;
+        }
+    }
+    if ($cleaned) {
+        file_put_contents($dbFile, json_encode($db, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
     }
 }
