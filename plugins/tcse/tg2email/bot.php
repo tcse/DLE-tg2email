@@ -1,9 +1,9 @@
 <?php
 /*
 =====================================================
- Telegram to Email Bot - TCSE-cms.com & DeepSeek Chat
+ Telegram to Email Bot - TCSE-cms.com
 -----------------------------------------------------
- Version: 0.8.5 (Stable)
+ Version: 0.8.5.2 (Stable)
  Release: 20.08.2025
 -----------------------------------------------------
  https://tcse-cms.com/   
@@ -16,13 +16,15 @@
  File: /plugins/tcse/tg2email/bot.php
 -----------------------------------------------------
  Purpose: Пересылка сообщений Telegram на email с 
-          безопасной отдачей медиа через file.php
+          гибким управлением вложениями и безопасными ссылками
 -----------------------------------------------------
  Features:
  ✔ Буферизация (1+ сообщений в одном письме)
  ✔ Поддержка чатов, каналов, ЛС
- ✔ Безопасные ссылки на медиа (без токена!)
- ✔ Обработка медиа: фото, документы и др.
+ ✔ Вложения фото < 5 МБ (опционально)
+ ✔ Безопасные ссылки на медиа (file.php)
+ ✔ Настраиваемый срок хранения ссылок (media_ttl)
+ ✔ Управление вложениями через админку
  ✔ Команда /send для мгновенной отправки
  ✔ Полная идентификация: @username | ID
  ✔ Поддержка нескольких email
@@ -40,6 +42,8 @@ $adminEmail = $tg2emailConfig['tg2email_adminEmail'];
 $adminChatId = $tg2emailConfig['tg2email_CHATID'];
 $bufferTime = (int)$tg2emailConfig['tg2email_bufferTime'];
 $emailFormat = $tg2emailConfig['tg2email_formatEmail'] ?? '0'; // 0 = text, 1 = html
+$mediaTtl = (int)$tg2emailConfig['tg2email_media_ttl'] ?? 365; // 0 = вечно
+$embedPhotos = $tg2emailConfig['tg2email_embedPhotos'] ?? '1'; // 1 = включено
 
 // Логирование
 file_put_contents('bot_log.txt', date('[Y-m-d H:i:s]')." Input: ".file_get_contents('php://input')."\n", FILE_APPEND);
@@ -78,12 +82,48 @@ if (isset($update['message'])) {
 // === ✅ Конец проверки авторизации ===
 
 // Обработка входящего сообщения
+// === Обработка входящего сообщения ===
 if (isset($update['message'])) {
     $message = $update['message'];
     $chatId = $message['chat']['id'];
     $text = isset($message['text']) ? trim($message['text']) : '';
+    $userId = $message['from']['id'] ?? null;
 
-    // Обработка команды /send
+    // === 🤖 Команды бота ===
+    if ($text === '/start') {
+        $welcome = "👋 Добро пожаловать в <b>tg2email</b>!\n\n";
+        $welcome .= "📩 Этот бот пересылает сообщения из Telegram на email.\n\n";
+        $welcome .= "<b>Доступные команды:</b>\n";
+        $welcome .= "• <code>/send</code> — отправить накопленные сообщения\n";
+        $welcome .= "• <code>/help</code> — подробная справка\n";
+        $welcome .= "• <code>/id</code> — узнать ваш Telegram ID\n\n";
+        $welcome .= "📌 Просто перешлите любое сообщение — и оно попадёт в буфер.";
+
+        sendTelegramMessage($chatId, $welcome);
+        exit;
+    }
+
+    if ($text === '/help') {
+        $detailedHelp = "📘 <b>Справка по использованию tg2email</b>\n\n";
+        $detailedHelp .= "1. <b>Пересылка сообщений</b>\n";
+        $detailedHelp .= "   Перешлите любое сообщение (из ЛС, группы или канала) — оно добавится в буфер.\n\n";
+        $detailedHelp .= "2. <b>Буферизация</b>\n";
+        $detailedHelp .= "   Сообщения накапливаются <b>{$bufferTime} мин</b>. После этого — автоматически отправляются.\n\n";
+        $detailedHelp .= "3. <b>Мгновенная отправка</b>\n";
+        $detailedHelp .= "   Используйте <code>/send</code>, чтобы отправить всё сейчас.\n\n";
+        $detailedHelp .= "4. <b>Проверка ID</b>\n";
+        $detailedHelp .= "   Команда <code>/id</code> покажет ваш Telegram ID — полезно для настройки доступа.\n\n";
+        $detailedHelp .= "📬 Все сообщения отправляются на email: <code>" . htmlspecialchars($adminEmail) . "</code>";
+
+        sendTelegramMessage($chatId, $detailedHelp);
+        exit;
+    }
+
+    if ($text === '/id') {
+        sendTelegramMessage($chatId, "🆔 Ваш Telegram ID: <code>$userId</code>", 'HTML');
+        exit;
+    }
+
     if ($text === '/send') {
         $bufferFile = "buffer_$chatId.txt";
         if (file_exists($bufferFile)) {
@@ -97,7 +137,7 @@ if (isset($update['message'])) {
         exit;
     }
 
-    // Обработка пересланных сообщений
+    // === Обработка пересланных сообщений ===
     if (isset($message['forward_from']) || isset($message['forward_sender_name']) || isset($message['forward_from_chat'])) {
         $bufferFile = "buffer_$chatId.txt";
         $currentTime = time();
@@ -109,9 +149,10 @@ if (isset($update['message'])) {
                 $buffer['messages'][] = prepareMessage($message);
                 file_put_contents($bufferFile, json_encode($buffer));
                 $timeLeft = $bufferTime * 60 - ($currentTime - $buffer['timestamp']);
-                sendTelegramMessage($chatId, "💬 Сообщение добавлено в буфер (отправка через ".ceil($timeLeft/60)." мин)");
+                sendTelegramMessage($chatId, "💬 Сообщение добавлено в буфер (отправка через " . ceil($timeLeft/60) . " мин)");
                 exit;
             } else {
+                // Время вышло - отправляем
                 sendBufferedMessages($buffer['messages'], $chatId);
             }
         }
@@ -125,11 +166,12 @@ if (isset($update['message'])) {
         
         $source = "сообщение";
         if (isset($message['forward_from_chat'])) {
-            $source = "сообщение из ".($message['forward_from_chat']['type'] === 'channel' ? 'канала' : 'чата');
+            $source = "сообщение из " . ($message['forward_from_chat']['type'] === 'channel' ? 'канала' : 'чата');
         }
         
-        sendTelegramMessage($chatId, "📥 Первое $source в буфере. Жду ".$bufferTime." мин...");
+        sendTelegramMessage($chatId, "📥 Первое $source в буфере. Жду " . $bufferTime . " мин...");
     } else {
+        // Если пользователь прислал обычное сообщение (не команду и не пересылку)
         $helpText = "📨 Перешлите сообщение (из личного чата, группы или канала), и я отправлю его на email\n";
         $helpText .= "Используйте /send для немедленной отправки";
         sendTelegramMessage($chatId, $helpText);
@@ -138,6 +180,8 @@ if (isset($update['message'])) {
 
 // Подготовка сообщения для отправки
 function prepareMessage($message) {
+    global $tg2emailConfig; // 🔥 Критически важно для доступа к настройкам
+
     $data = [
         'text' => '',
         'date' => date('d.m.Y H:i', $message['date']),
@@ -148,6 +192,7 @@ function prepareMessage($message) {
         'link' => null,
         'user_id' => null,
         'file_direct_link' => null,
+        'embed_file' => null, // для вложения
     ];
 
     // Получаем текст
@@ -228,17 +273,34 @@ function prepareMessage($message) {
                 $filePath = $fileInfo['result']['file_path'];
                 $filename = basename($filePath);
 
-                // Путь к базе
+                // Проверка размера для вложения
+                $url = "https://api.telegram.org/file/bot{$GLOBALS['botToken']}/{$filePath}";
+                $headers = @get_headers($url, 1);
+                $fileSize = (int)($headers['Content-Length'] ?? 0);
+
+                // Проверяем, включено ли вложение
+                $embedEnabled = isset($tg2emailConfig['tg2email_embedPhotos']) && $tg2emailConfig['tg2email_embedPhotos'] == '1';
+
+                if ($embedEnabled && $fileSize > 0 && $fileSize <= 5 * 1024 * 1024) {
+                    $content = file_get_contents($url);
+                    if ($content !== false) {
+                        $data['embed_file'] = [
+                            'content' => base64_encode($content),
+                            'filename' => $filename,
+                            'size' => $fileSize,
+                            'type' => mime_content_type('//tmp/' . $filename) ?: 'application/octet-stream'
+                        ];
+                    }
+                }
+
+                // Сохраняем в media_db.json
                 $dbFile = __DIR__ . '/media_db.json';
                 $db = file_exists($dbFile) ? json_decode(file_get_contents($dbFile), true) : [];
-
-                // Сохраняем
                 $db[$fileId] = [
                     'file_path' => $filePath,
                     'timestamp' => time(),
                     'original_filename' => $filename
                 ];
-
                 file_put_contents($dbFile, json_encode($db, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 
                 // Генерируем безопасную ссылку
@@ -253,24 +315,28 @@ function prepareMessage($message) {
 
 // Отправка накопленных сообщений
 function sendBufferedMessages($messages, $chatId) {
-    global $adminEmail, $emailFormat;
+    global $adminEmail, $emailFormat, $mediaTtl;
 
     $emailSubject = "Сообщения из Telegram (".count($messages).")";
+    $boundary = '==MULTIPART_BOUNDARY_' . md5(uniqid(mt_rand(), true));
+
     $headers = "From: ".getFromEmail()."\r\n";
+    $headers .= "MIME-Version: 1.0\r\n";
+    $headers .= "Content-Type: multipart/mixed; boundary=\"$boundary\"\r\n";
+
+    // === ОСНОВНОЕ ТЕЛО ПИСЬМА (первая часть) ===
+    $body = "--$boundary\r\n";
 
     if ($emailFormat == '1') {
-        // === HTML ПИСЬМО ===
-        $headers .= "Content-Type: text/html; charset=utf-8\r\n";
-
-        $emailBody = "
-        <div style='font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; color: #333; line-height: 1.6;'>
-            <h2 style='color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px;'>Собрано сообщений: ".count($messages)."</h2>";
+        $body .= "Content-Type: text/html; charset=utf-8\r\n\r\n";
+        $body .= "<div style='font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; color: #333; line-height: 1.6;'>";
+        $body .= "<h2 style='color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px;'>Собрано сообщений: ".count($messages)."</h2>";
 
         foreach ($messages as $index => $msg) {
             $typeLabel = getMessageTypeLabel($msg['message_type']);
             $mediaLabel = $msg['has_media'] ? getMediaLabel($msg['media_type']) : '';
 
-            $emailBody .= "
+            $body .= "
             <div style='background: #f9f9f9; border-left: 4px solid #3498db; padding: 15px; margin: 15px 0; border-radius: 0 8px 8px 0;'>
                 <strong style='color: #2c3e50;'>Сообщение ".($index+1)."</strong>
                 <p style='margin: 8px 0;'><strong>От:</strong> ".htmlspecialchars($msg['sender'])."</p>
@@ -280,64 +346,60 @@ function sendBufferedMessages($messages, $chatId) {
             ";
 
             if (!empty($msg['link'])) {
-                $emailBody .= "<p style='margin: 8px 0;'><strong>Ссылка:</strong> <a href='".$msg['link']."' target='_blank'>Открыть в Telegram</a></p>";
+                $body .= "<p style='margin: 8px 0;'><strong>Ссылка:</strong> <a href='".$msg['link']."' target='_blank'>Открыть в Telegram</a></p>";
             }
 
             if (!empty($msg['file_direct_link'])) {
-                $emailBody .= "<p style='margin: 8px 0;'><strong>Файл:</strong> <a href='".$msg['file_direct_link']."' target='_blank'>Скачать</a></p>";
+                $body .= "<p style='margin: 8px 0;'><strong>Файл:</strong> <a href='".$msg['file_direct_link']."' target='_blank'>Скачать</a></p>";
             }
 
             if (!empty($msg['text'])) {
-                $emailBody .= "<pre style='background:#fff; padding:10px; border:1px solid #ddd; border-radius:4px; overflow:auto; white-space: pre-wrap; font-size: 14px;'>".
+                $body .= "<pre style='background:#fff; padding:10px; border:1px solid #ddd; border-radius:4px; overflow:auto; white-space: pre-wrap; font-size: 14px;'>".
                     htmlspecialchars(trim($msg['text'])).
                     "</pre>";
             }
 
-            $emailBody .= "</div>";
+            $body .= "</div>";
         }
 
-        $emailBody .= "
+        $body .= "
             <p style='color: #7f8c8d; font-size: 12px; margin-top: 30px; border-top: 1px solid #eee; padding-top: 10px;'>
                 Это письмо сгенерировано автоматически через <strong>tg2email</strong> — плагин для DLE.
             </p>
         </div>";
-
     } else {
-        // === ОБЫЧНЫЙ ТЕКСТ ===
-        $headers .= "Content-Type: text/plain; charset=utf-8\r\n";
-
-        $emailBody = "Собрано сообщений: ".count($messages)."\n\n";
-
-        foreach ($messages as $index => $msg) {
-            $emailBody .= "=== Сообщение ".($index+1)." ===\n";
-            $emailBody .= "От: ".$msg['sender']."\n";
-            $emailBody .= "Дата: ".$msg['date']."\n";
-            $emailBody .= "Тип: ".getMessageTypeDescription($msg['message_type'])."\n";
-            
-            if ($msg['has_media']) {
-                $mediaTypes = ['photo' => 'Фото', 'video' => 'Видео', 'document' => 'Документ', 'audio' => 'Аудио', 'voice' => 'Голосовое', 'sticker' => 'Стикер'];
-                $emailBody .= "Медиа: ".$mediaTypes[$msg['media_type']]."\n";
-            }
-            
-            if (!empty($msg['link'])) {
-                $emailBody .= "Ссылка: ".$msg['link']."\n";
-            }
-            
-            if (!empty($msg['file_direct_link'])) {
-                $emailBody .= "Файл: ".$msg['file_direct_link']."\n";
-            }
-            
-            if (!empty($msg['text'])) {
-                $emailBody .= "\n".trim($msg['text'])."\n";
-            }
-            
-            $emailBody .= "\n";
+        $body .= "Content-Type: text/plain; charset=utf-8\r\n\r\n";
+        foreach ($messages as $msg) {
+            $body .= "=== Сообщение ===\n";
+            $body .= "От: ".$msg['sender']."\n";
+            $body .= "Дата: ".$msg['date']."\n";
+            if ($msg['has_media']) $body .= "Медиа: ".ucfirst($msg['media_type'])."\n";
+            if (!empty($msg['link'])) $body .= "Ссылка: ".$msg['link']."\n";
+            if (!empty($msg['file_direct_link'])) $body .= "Файл: ".$msg['file_direct_link']."\n";
+            if (!empty($msg['text'])) $body .= "\n".$msg['text']."\n";
+            $body .= "\n";
         }
-
-        $emailBody .= "\n\nЭто письмо сгенерировано автоматически через tg2email — плагин для DLE.";
     }
 
-    // === Отправка на несколько email ===
+    // === ПЕРЕХОД К ВЛОЖЕНИЯМ ===
+    $body .= "\r\n"; // Завершаем текстовую часть
+    $body .= "--$boundary\r\n"; // Начинаем вложение
+
+    foreach ($messages as $msg) {
+        if (isset($msg['embed_file'])) {
+            $body .= "Content-Type: {$msg['embed_file']['type']}; name=\"{$msg['embed_file']['filename']}\"\r\n";
+            $body .= "Content-Transfer-Encoding: base64\r\n";
+            $body .= "Content-Disposition: attachment; filename=\"{$msg['embed_file']['filename']}\"\r\n\r\n";
+            $body .= chunk_split($msg['embed_file']['content'], 76, "\r\n");
+            $body .= "--$boundary\r\n";
+        }
+    }
+
+    // === ЗАВЕРШЕНИЕ ПИСЬМА ===
+    $body = rtrim($body, "--$boundary\r\n");
+    $body .= "--\r\n";
+
+    // === ОТПРАВКА НА НЕСКОЛЬКО EMAIL ===
     $recipients = array_map('trim', explode(',', $adminEmail));
     $successCount = 0;
     $failedRecipients = [];
@@ -348,7 +410,7 @@ function sendBufferedMessages($messages, $chatId) {
 
         $uniqueHeaders = $headers . "Message-ID: <" . md5(uniqid(mt_rand(), true)) . "@{$_SERVER['HTTP_HOST']}>\r\n";
 
-        if (mail($recipient, $emailSubject, $emailBody, $uniqueHeaders)) {
+        if (mail($recipient, $emailSubject, $body, $uniqueHeaders)) {
             $successCount++;
         } else {
             $failedRecipients[] = $recipient;
@@ -433,13 +495,14 @@ foreach ($files as $file) {
     }
 }
 
-// Очистка старых записей в media_db.json (старше 24 часов)
+// Очистка старых записей в media_db.json (старше mediaTtl дней)
 $dbFile = __DIR__ . '/media_db.json';
-if (file_exists($dbFile)) {
+if (file_exists($dbFile) && $mediaTtl > 0) {
     $db = json_decode(file_get_contents($dbFile), true);
     $cleaned = false;
+    $ttlSeconds = $mediaTtl * 86400;
     foreach ($db as $id => $data) {
-        if (time() - ($data['timestamp'] ?? 0) > 86400) {
+        if (time() - ($data['timestamp'] ?? 0) > $ttlSeconds) {
             unset($db[$id]);
             $cleaned = true;
         }
