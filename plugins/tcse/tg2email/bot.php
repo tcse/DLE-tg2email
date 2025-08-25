@@ -184,7 +184,8 @@ function prepareMessage($message) {
 
     $data = [
         'text' => '',
-        'date' => date('d.m.Y H:i', $message['date']),
+        // Используем оригинальную дату, если есть
+        'date' => date('d.m.Y H:i', $message['forward_date'] ?? $message['date']),
         'has_media' => false,
         'media_type' => null,
         'message_type' => 'private',
